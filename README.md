@@ -33,7 +33,7 @@ https://naga3.github.io/enso/ で遊べる（main に push すると GitHub Page
 
 ## 版
 
-画面の下に版（`src/main.js` の `VERSION`）と、紙の画素数・フレームレート・1 フレームあたりの筆の時間を出す。push するたびに `VERSION` と、index.html の `main.js?v=` を一つ上げる。GitHub Pages は最大 10 分ほど古いファイルを返すので、スマホに最新が届いたかをこれで見る。
+画面の下に版（`src/main.js` の `VERSION`）と、フレームレート・1 フレームあたりの筆の時間を出す。push するたびに `VERSION` と、index.html の `main.js?v=` を一つ上げる。GitHub Pages は最大 10 分ほど古いファイルを返すので、スマホに最新が届いたかをこれで見る。
 
 ## 試験
 

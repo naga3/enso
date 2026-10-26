@@ -7,7 +7,7 @@ const paper = $('paper');
 // 描いている途中の遅れを減らす（desynchronized）
 const view = paper.getContext('2d', { alpha: false, desynchronized: true });
 // 版。push するたびに一つ上げる（スマホに最新が届いたかを画面の下で見る）
-const VERSION = 6;
+const VERSION = 7;
 // 紙の画素数。スマホの高い倍率のままだと重いので、倍率は 2、一辺は 800 までにする
 const S = Math.min(800, Math.round(Math.min(innerWidth, innerHeight * 0.62) * Math.min(2, devicePixelRatio))) || 600;
 paper.width = paper.height = S;
@@ -198,7 +198,7 @@ function tick() {
   const el = performance.now() - meter.since;
   if (el < 500) return;
   const fps = (meter.frames * 1000) / el, ms = meter.work / meter.frames;
-  $('meta').textContent = `v${VERSION} · ${S}px · ${fps.toFixed(0)}fps · 筆 ${ms.toFixed(1)}ms`;
+  $('meta').textContent = `v${VERSION} · ${fps.toFixed(0)}fps · 筆 ${ms.toFixed(1)}ms`;
   meter.work = 0; meter.frames = 0; meter.since = performance.now();
 }
 
