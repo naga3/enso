@@ -8,21 +8,31 @@ const paper = $('paper');
 // 描いている途中の遅れを減らす（desynchronized）
 const view = paper.getContext('2d', { alpha: false, desynchronized: true });
 // 版。push するたびに一つ上げる（スマホに最新が届いたかを画面の下で見る）
-const VERSION = 8;
-// 紙の画素数。スマホの高い倍率のままだと重いので、倍率は 2、一辺は 800 までにする
-const S = Math.min(800, Math.round(Math.min(innerWidth, innerHeight * 0.62) * Math.min(2, devicePixelRatio))) || 600;
-paper.width = paper.height = S;
+const VERSION = 9;
+// 紙の画素数。スマホの高い倍率のままだと重いので、倍率は 2、一辺は 800 までにする。
+// 軽量では半分。描いている間の fps が低いと自動で軽量になり、画面の下の行を押しても切り替わる。
+// 点数は筆の記録から出すので、画素数が違っても同じ描き方なら同じ点になる
+const FULL = Math.min(800, Math.round(Math.min(innerWidth, innerHeight * 0.62) * Math.min(2, devicePixelRatio))) || 600;
+const LITE_FPS = 50; // 描いている間の fps がこれを切ったら軽量にする
+let lite = localStorage.getItem('enso.lite') === '1';
+let S, paperTex, odaiInk, under, underDemo;
+const diffLayer = new OffscreenCanvas(GRID, GRID);
 
 const layer = () => {
   const c = new OffscreenCanvas(S, S);
   const g = c.getContext('2d');
   return { c, g };
 };
-const paperTex = makePaper(S);
-const odaiInk = layer();
-// 紙とお題を重ねたもの。描く前に画面へ写し、筆はその上に直接描く（毎フレームの写し直しはしない）
-const under = layer(), underDemo = layer();
-const diffLayer = new OffscreenCanvas(GRID, GRID);
+
+function setupPaper() {
+  S = lite ? Math.max(240, Math.round(FULL / 2)) : FULL;
+  paper.width = paper.height = S;
+  paperTex = makePaper(S);
+  odaiInk = layer();
+  // 紙とお題を重ねたもの。描く前に画面へ写し、筆はその上に直接描く（毎フレームの写し直しはしない）
+  under = layer(); underDemo = layer();
+}
+setupPaper();
 
 let dir = localStorage.getItem('enso.dir') === 'ccw' ? CCW : CW;
 const dirKey = () => (dir === CW ? 'cw' : 'ccw');
@@ -30,6 +40,7 @@ let odai, odaiRec;
 let state = 'ready'; // ready | drawing | done | demo
 let brush = null, last = null, attempt = 0;
 let demo = null;
+let drawStat = null, wantLite = false; // 描いている間のコマ数。軽量に切り替えるのは次に紙を出すとき
 
 // 墨の層は透明で、黒の濃さだけを持つ。紙に普通に重ねると、紙 ×（1 − 濃さ）で乗算と同じ色になる
 function clearInk(l) {
@@ -50,6 +61,14 @@ function show(base) {
 
 function loadOdai() {
   odai = makeOdai(dir);
+  drawOdai();
+  $('dir').textContent = dir === CW ? '↻ 時計回り' : '↺ 反時計回り';
+  localStorage.setItem('enso.dir', dirKey());
+  showBest();
+  reset();
+}
+
+function drawOdai() {
   clearInk(odaiInk);
   odaiRec = playInto(new Brush(odaiInk.g, 1), odai).record;
   for (const [l, a] of [[under, 0.2], [underDemo, 0.12]]) {
@@ -58,13 +77,17 @@ function loadOdai() {
     l.g.globalAlpha = a;
     l.g.drawImage(odaiInk.c, 0, 0);
   }
-  $('dir').textContent = dir === CW ? '↻ 時計回り' : '↺ 反時計回り';
-  localStorage.setItem('enso.dir', dirKey());
-  showBest();
-  reset();
+}
+
+function setLite(on) {
+  lite = on;
+  localStorage.setItem('enso.lite', on ? '1' : '0');
+  setupPaper();
+  if (odai) drawOdai();
 }
 
 function reset() {
+  if (wantLite) { wantLite = false; setLite(true); }
   show(under);
   brush = null; state = 'ready'; demo = null;
   $('result').hidden = true;
@@ -88,6 +111,7 @@ paper.addEventListener('pointerdown', (e) => {
   brush = new Brush(view, 1000 + attempt++);
   brush.start(p.x, p.y, p.t);
   last = p; state = 'drawing';
+  drawStat = { frames: 0, t0: performance.now() };
   $('prompt').style.opacity = 0;
 });
 paper.addEventListener('pointermove', (e) => {
@@ -109,6 +133,8 @@ paper.addEventListener('pointerup', up);
 paper.addEventListener('pointercancel', up);
 
 function finish() {
+  const sec = (performance.now() - drawStat.t0) / 1000;
+  if (!lite && sec > 0.6 && drawStat.frames / sec < LITE_FPS) wantLite = true;
   const s = score(odaiRec, brush.record);
   state = 'done';
   if (!s) { reset(); return; }
@@ -191,6 +217,12 @@ $('retry').onclick = () => { if (state !== 'drawing') reset(); };
 $('dir').onclick = () => { if (state !== 'drawing') { dir = -dir; loadOdai(); } };
 $('start').onclick = () => { $('title').hidden = true; $('game').hidden = false; loadOdai(); };
 $('back').onclick = () => { $('game').hidden = true; $('title').hidden = false; };
+$('meta').onclick = () => {
+  if (state === 'drawing') return;
+  wantLite = false;
+  setLite(!lite);
+  if (odai) reset();
+};
 
 // 重さの表示: フレームレートと、1 フレームあたりの筆の計算と描画の時間
 const meter = { work: 0, frames: 0, since: performance.now() };
@@ -199,14 +231,14 @@ function tick() {
   const el = performance.now() - meter.since;
   if (el < 500) return;
   const fps = (meter.frames * 1000) / el, ms = meter.work / meter.frames;
-  $('meta').textContent = `v${VERSION} · ${fps.toFixed(0)}fps · 筆 ${ms.toFixed(1)}ms`;
+  $('meta').textContent = `v${VERSION} · ${S}px${lite ? ' 軽量' : ''} · ${fps.toFixed(0)}fps · 筆 ${ms.toFixed(1)}ms`;
   meter.work = 0; meter.frames = 0; meter.since = performance.now();
 }
 
 function frame() {
   const t0 = performance.now();
   const now = t0 / 1000;
-  if (state === 'drawing' && last) brush.move(last.x, last.y, now);
+  if (state === 'drawing' && last) { brush.move(last.x, last.y, now); drawStat.frames++; }
   if (state === 'demo') {
     const el = now - demo.t0;
     const ss = odai.samples;

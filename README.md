@@ -41,7 +41,9 @@ https://naga3.github.io/enso/ で遊べる（main に push すると GitHub Page
 
 ## 版
 
-画面の下に版（`src/main.js` の `VERSION`）と、フレームレート・1 フレームあたりの筆の時間を出す。push するたびに `VERSION` と、index.html の `main.js?v=` を一つ上げる。GitHub Pages は最大 10 分ほど古いファイルを返すので、スマホに最新が届いたかをこれで見る。
+画面の下に版（`src/main.js` の `VERSION`）と、紙の画素数・フレームレート・1 フレームあたりの筆の時間を出す。
+
+描いている間の fps が 50 を切ると、次の紙から軽量（解像度半分）になる。画面の下の行を押しても切り替わり、ブラウザに覚える。点数は筆の記録から出すので、軽量でも同じ描き方なら同じ点になる。push するたびに `VERSION` と、index.html の `main.js?v=` を一つ上げる。GitHub Pages は最大 10 分ほど古いファイルを返すので、スマホに最新が届いたかをこれで見る。
 
 ## 試験
 

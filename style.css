@@ -39,4 +39,4 @@ header { display: flex; align-items: center; justify-content: space-between; gap
 .note { margin: 0; font-size: 13px; color: #8a7c67; line-height: 1.6; }
 #graph { width: 100%; height: 90px; display: block; }
 #hints { margin: 0; padding-left: 1.2em; color: #c9bda8; font-size: 14px; line-height: 1.7; }
-#meta { margin-top: 16px; text-align: center; font-size: 11px; color: #5e5446; font-family: ui-monospace, monospace; }
+#meta { cursor: pointer; user-select: none; margin-top: 16px; text-align: center; font-size: 11px; color: #5e5446; font-family: ui-monospace, monospace; }
