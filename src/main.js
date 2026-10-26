@@ -4,7 +4,8 @@ import { score, GRID } from './score.js';
 
 const $ = (id) => document.getElementById(id);
 const paper = $('paper');
-const view = paper.getContext('2d');
+// 描いている途中の遅れを減らす（desynchronized）
+const view = paper.getContext('2d', { alpha: false, desynchronized: true });
 const S = Math.min(1200, Math.round(Math.min(innerWidth, innerHeight * 0.62) * devicePixelRatio)) || 800;
 paper.width = paper.height = S;
 
@@ -14,8 +15,8 @@ const layer = () => {
   return { c, g };
 };
 const paperTex = makePaper();
-const odaiInk = layer(), playerInk = layer(), demoInk = layer();
-// 紙とお題を重ねたもの。お題を変えたときだけ作り直す
+const odaiInk = layer();
+// 紙とお題を重ねたもの。描く前に画面へ写し、筆はその上に直接描く（毎フレームの写し直しはしない）
 const under = layer(), underDemo = layer();
 const diffLayer = new OffscreenCanvas(GRID, GRID);
 
@@ -25,16 +26,22 @@ let odai, odaiRec;
 let state = 'ready'; // ready | drawing | done | demo
 let brush = null, last = null, attempt = 0;
 let demo = null;
-let full = true; // 次のフレームで紙を丸ごと描き直す
 
+// 墨の層は透明で、黒の濃さだけを持つ。紙に普通に重ねると、紙 ×（1 − 濃さ）で乗算と同じ色になる
 function clearInk(l) {
   l.g.setTransform(1, 0, 0, 1, 0, 0);
-  l.g.globalCompositeOperation = 'source-over';
-  l.g.fillStyle = '#fff';
-  l.g.fillRect(0, 0, S, S);
+  l.g.clearRect(0, 0, S, S);
   l.g.setTransform(S, 0, 0, S, 0, 0);
-  l.g.globalCompositeOperation = 'darken';
-  l.g.lineCap = 'round';
+  l.g.lineCap = 'butt';
+}
+
+// 画面を紙（とお題）だけにして、筆が描ける向きに整える
+function show(base) {
+  view.setTransform(1, 0, 0, 1, 0, 0);
+  view.globalAlpha = 1;
+  view.drawImage(base.c, 0, 0);
+  view.setTransform(S, 0, 0, S, 0, 0);
+  view.lineCap = 'butt';
 }
 
 function loadOdai() {
@@ -42,9 +49,9 @@ function loadOdai() {
   clearInk(odaiInk);
   odaiRec = playInto(new Brush(odaiInk.g, 1), odai).record;
   for (const [l, a] of [[under, 0.2], [underDemo, 0.12]]) {
-    l.g.globalCompositeOperation = 'source-over'; l.g.globalAlpha = 1;
+    l.g.globalAlpha = 1;
     l.g.drawImage(paperTex, 0, 0);
-    l.g.globalCompositeOperation = 'multiply'; l.g.globalAlpha = a;
+    l.g.globalAlpha = a;
     l.g.drawImage(odaiInk.c, 0, 0);
   }
   $('dir').textContent = dir === CW ? '↻ 時計回り' : '↺ 反時計回り';
@@ -54,8 +61,8 @@ function loadOdai() {
 }
 
 function reset() {
-  clearInk(playerInk);
-  brush = null; state = 'ready'; demo = null; full = true;
+  show(under);
+  brush = null; state = 'ready'; demo = null;
   $('result').hidden = true;
   $('prompt').style.opacity = 1;
 }
@@ -74,7 +81,7 @@ paper.addEventListener('pointerdown', (e) => {
   if (state !== 'ready') return;
   paper.setPointerCapture(e.pointerId);
   const p = toPaper(e);
-  brush = new Brush(playerInk.g, 1000 + attempt++);
+  brush = new Brush(view, 1000 + attempt++);
   brush.start(p.x, p.y, p.t);
   last = p; state = 'drawing';
   $('prompt').style.opacity = 0;
@@ -103,7 +110,6 @@ function finish() {
   if (s.total > (Number(localStorage.getItem(key)) || 0)) localStorage.setItem(key, s.total.toFixed(1));
   showBest();
   paintDiff(s.diff);
-  full = true;
   showResult(s);
 }
 
@@ -129,6 +135,10 @@ function paintDiff(diff) {
     if (c) img.data.set([...c, 255], k * 4);
   }
   g.putImageData(img, 0, 0);
+  view.setTransform(1, 0, 0, 1, 0, 0);
+  view.globalAlpha = 0.7; view.imageSmoothingEnabled = true;
+  view.drawImage(diffLayer, 0, 0, S, S);
+  view.globalAlpha = 1;
 }
 
 // 太さの比べ: 横はお題の上の位置、縦は太さ
@@ -163,11 +173,11 @@ function drawGraph(s) {
 // お手本: お題の手の動きをそのままの速さで描いて見せる
 $('demo').onclick = () => {
   if (state === 'drawing') return;
-  clearInk(demoInk);
-  demo = { brush: new Brush(demoInk.g, 1), i: 0, t0: performance.now() / 1000, ended: 0 };
+  show(underDemo);
+  demo = { brush: new Brush(view, 1), i: 0, t0: performance.now() / 1000, ended: 0 };
   const f = odai.samples[0];
   demo.brush.start(f.x, f.y, f.t);
-  state = 'demo'; full = true;
+  state = 'demo';
   $('result').hidden = true;
   $('prompt').style.opacity = 0;
 };
@@ -186,30 +196,7 @@ function frame() {
     if (!demo.ended && el >= odai.end) { demo.brush.end(odai.end); demo.ended = now; }
     if (demo.ended && now - demo.ended > 1.2) reset();
   }
-  const active = state === 'drawing' ? brush : state === 'demo' ? demo.brush : null;
-  const d = active && active.takeDirty();
-  if (full) { compose(0, 0, S, S); full = false; }
-  else if (d) {
-    const x0 = Math.max(0, Math.floor(d.x0 * S) - 2), y0 = Math.max(0, Math.floor(d.y0 * S) - 2);
-    const x1 = Math.min(S, Math.ceil(d.x1 * S) + 2), y1 = Math.min(S, Math.ceil(d.y1 * S) + 2);
-    if (x1 > x0 && y1 > y0) compose(x0, y0, x1 - x0, y1 - y0);
-  }
   requestAnimationFrame(frame);
-}
-
-// 紙の (x, y, w, h) の範囲を描き直す（画素）
-function compose(x, y, w, h) {
-  const put = (img, alpha = 1) => { view.globalAlpha = alpha; view.drawImage(img, x, y, w, h, x, y, w, h); };
-  view.globalCompositeOperation = 'source-over';
-  put(state === 'demo' ? underDemo.c : under.c);
-  view.globalCompositeOperation = 'multiply';
-  put(state === 'demo' ? demoInk.c : playerInk.c);
-  if (state === 'done') {
-    view.globalCompositeOperation = 'source-over';
-    view.globalAlpha = 0.7; view.imageSmoothingEnabled = true; view.drawImage(diffLayer, 0, 0, S, S);
-  }
-  view.globalAlpha = 1;
-  view.globalCompositeOperation = 'source-over';
 }
 
 function makePaper() {
@@ -240,4 +227,4 @@ function makePaper() {
 }
 
 requestAnimationFrame(frame);
-window.enso = { get odai() { return odai; }, get rec() { return odaiRec; }, redraw() { compose(0, 0, S, S); }, score, Brush, playInto };
+window.enso = { get odai() { return odai; }, get rec() { return odaiRec; }, score, Brush, playInto };

@@ -1,5 +1,6 @@
 // 筆。手の動き（位置と時刻）を受け取り、紙の上に墨を置く。
 // 座標は紙を 1×1 とした値。太さは速さで決まり（遅いと太い）、止まると墨が溜まって広がる。
+// 墨は透明な層に黒の濃さ（不透明度）として置く。普通の重ね方だけで済み、スマホの GPU でも軽い。
 // お題も同じ筆に架空の手の動きを入れて描くので、ここを変えるとお題も変わる。
 
 export const DT = 1 / 240;
@@ -49,7 +50,7 @@ const grainAt = (x, y) => grain[((y * GRAIN_SCALE) & 255) * G + ((x * GRAIN_SCAL
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 export class Brush {
-  // ctx は白地のキャンバス（darken で重ねる）。null なら記録だけする
+  // ctx は透明なキャンバス。null なら記録だけする
   constructor(ctx, seed = 1) {
     this.ctx = ctx;
     const r = rng(seed);
@@ -61,7 +62,6 @@ export class Brush {
       this.bristles.push({ u, a: (r() - 0.5) * 2, k: 0.6 + r() * 0.8, cap, ink: cap, px: 0, py: 0, has: false });
     }
     this.record = []; // {x,y,w,t} 一歩ごと
-    this.dirty = null; // 前に takeDirty してから墨を置いた範囲
     this.down = false;
     this.done = false;
   }
@@ -134,21 +134,6 @@ export class Brush {
     const w = this.w * (lifting ? this.lift ** 1.5 : 1);
     if (w > 0.0005) this.record.push({ x: this.x, y: this.y, w, t: this.t });
     this.paint(px, py, w, v, poolF);
-    const m = this.w * 0.8 + 0.004;
-    this.extend(px, py, m); this.extend(this.x, this.y, m);
-  }
-
-  extend(x, y, m) {
-    const d = this.dirty;
-    if (!d) { this.dirty = { x0: x - m, y0: y - m, x1: x + m, y1: y + m }; return; }
-    d.x0 = Math.min(d.x0, x - m); d.y0 = Math.min(d.y0, y - m);
-    d.x1 = Math.max(d.x1, x + m); d.y1 = Math.max(d.y1, y + m);
-  }
-
-  takeDirty() {
-    const d = this.dirty;
-    this.dirty = null;
-    return d;
   }
 
   inkLevel() {
@@ -165,15 +150,15 @@ export class Brush {
     if (ctx && poolF > 0.02 && this.r() < 0.3) {
       // 溜まり。筆の周りに墨がにじむ。縁は紙のきめでぎざつかせる
       const rb = (w / 2) * (0.8 + 0.3 * poolF);
-      const c = Math.round(22 + 40 * (1 - this.inkLevel()));
+      const a = 0.14 * (0.6 + 0.4 * this.inkLevel());
       for (let k = 0; k < 3; k++) {
         const ox = (this.r() - 0.5) * rb * 0.25, oy = (this.r() - 0.5) * rb * 0.25;
         const rr = rb * (0.85 + this.r() * 0.2);
         const g = ctx.createRadialGradient(this.x + ox, this.y + oy, 0, this.x + ox, this.y + oy, rr);
-        g.addColorStop(0, `rgb(${c},${c},${c})`);
-        g.addColorStop(0.86, `rgb(${c + 6},${c + 6},${c + 8})`);
-        g.addColorStop(0.93, `rgb(${c + 70},${c + 70},${c + 74})`);
-        g.addColorStop(1, 'rgb(255,255,255)');
+        g.addColorStop(0, `rgba(0,0,0,${a})`);
+        g.addColorStop(0.75, `rgba(0,0,2,${a * 0.9})`);
+        g.addColorStop(0.9, `rgba(0,0,2,${a * 0.35})`);
+        g.addColorStop(1, 'rgba(0,0,0,0)');
         ctx.fillStyle = g;
         ctx.beginPath(); ctx.arc(this.x + ox, this.y + oy, rr, 0, Math.PI * 2); ctx.fill();
       }
@@ -190,8 +175,9 @@ export class Brush {
         const wet = smooth(0.02, 0.32, b.ink);
         const p = wet * (1 - skipBase * (0.5 + Math.abs(b.u)));
         if (grainAt((bx + b.px) / 2, (by + b.py) / 2) < p) {
-          const c = Math.round(16 + 80 * (1 - smooth(0, 0.6, b.ink)));
-          ctx.strokeStyle = `rgb(${c},${c},${c + 2})`;
+          // 隣の毛と重なって、白地に灰色 c を置いたのと同じくらいの濃さになる
+          const c = 16 + 80 * (1 - smooth(0, 0.6, b.ink));
+          ctx.strokeStyle = `rgba(0,0,2,${(1 - (c / 255) ** 0.75).toFixed(3)})`;
           ctx.lineWidth = Math.max(0.0009, lw * b.k);
           ctx.beginPath(); ctx.moveTo(b.px, b.py); ctx.lineTo(bx, by); ctx.stroke();
         }
