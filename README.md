@@ -31,6 +31,10 @@ https://naga3.github.io/enso/ で遊べる（main に push すると GitHub Page
 
 `img/title.jpg`（AI で描いた絵。自由に使える）。無いときは文字の表紙になる。
 
+## 版
+
+画面の下に版（`src/main.js` の `VERSION`）と、紙の画素数・フレームレート・1 フレームあたりの筆の時間を出す。push するたびに `VERSION` と、index.html の `main.js?v=` を一つ上げる。GitHub Pages は最大 10 分ほど古いファイルを返すので、スマホに最新が届いたかをこれで見る。
+
 ## 試験
 
 `npm test`（node --test）。逆向きのお題が左右の反転になっていること、お題どおりなら満点近く、速いと足りず、遅いとはみ出し、ずれると両方増え、逆回りは助言に出ることを見る。

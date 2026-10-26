@@ -6,7 +6,10 @@ const $ = (id) => document.getElementById(id);
 const paper = $('paper');
 // 描いている途中の遅れを減らす（desynchronized）
 const view = paper.getContext('2d', { alpha: false, desynchronized: true });
-const S = Math.min(1200, Math.round(Math.min(innerWidth, innerHeight * 0.62) * devicePixelRatio)) || 800;
+// 版。push するたびに一つ上げる（スマホに最新が届いたかを画面の下で見る）
+const VERSION = 6;
+// 紙の画素数。スマホの高い倍率のままだと重いので、倍率は 2、一辺は 800 までにする
+const S = Math.min(800, Math.round(Math.min(innerWidth, innerHeight * 0.62) * Math.min(2, devicePixelRatio))) || 600;
 paper.width = paper.height = S;
 
 const layer = () => {
@@ -88,11 +91,13 @@ paper.addEventListener('pointerdown', (e) => {
 });
 paper.addEventListener('pointermove', (e) => {
   if (state !== 'drawing') return;
+  const t0 = performance.now();
   const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
   for (const ev of evs.length ? evs : [e]) {
     last = toPaper(ev);
     brush.move(last.x, last.y, last.t);
   }
+  meter.work += performance.now() - t0;
 });
 const up = (e) => {
   if (state !== 'drawing') return;
@@ -186,8 +191,20 @@ $('dir').onclick = () => { if (state !== 'drawing') { dir = -dir; loadOdai(); } 
 $('start').onclick = () => { $('title').hidden = true; $('game').hidden = false; loadOdai(); };
 $('back').onclick = () => { $('game').hidden = true; $('title').hidden = false; };
 
+// 重さの表示: フレームレートと、1 フレームあたりの筆の計算と描画の時間
+const meter = { work: 0, frames: 0, since: performance.now() };
+function tick() {
+  meter.frames++;
+  const el = performance.now() - meter.since;
+  if (el < 500) return;
+  const fps = (meter.frames * 1000) / el, ms = meter.work / meter.frames;
+  $('meta').textContent = `v${VERSION} · ${S}px · ${fps.toFixed(0)}fps · 筆 ${ms.toFixed(1)}ms`;
+  meter.work = 0; meter.frames = 0; meter.since = performance.now();
+}
+
 function frame() {
-  const now = performance.now() / 1000;
+  const t0 = performance.now();
+  const now = t0 / 1000;
   if (state === 'drawing' && last) brush.move(last.x, last.y, now);
   if (state === 'demo') {
     const el = now - demo.t0;
@@ -196,6 +213,8 @@ function frame() {
     if (!demo.ended && el >= odai.end) { demo.brush.end(odai.end); demo.ended = now; }
     if (demo.ended && now - demo.ended > 1.2) reset();
   }
+  meter.work += performance.now() - t0;
+  tick();
   requestAnimationFrame(frame);
 }
 
