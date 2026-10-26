@@ -61,6 +61,7 @@ export class Brush {
       this.bristles.push({ u, a: (r() - 0.5) * 2, k: 0.6 + r() * 0.8, cap, ink: cap, px: 0, py: 0, has: false });
     }
     this.record = []; // {x,y,w,t} 一歩ごと
+    this.dirty = null; // 前に takeDirty してから墨を置いた範囲
     this.down = false;
     this.done = false;
   }
@@ -133,6 +134,21 @@ export class Brush {
     const w = this.w * (lifting ? this.lift ** 1.5 : 1);
     if (w > 0.0005) this.record.push({ x: this.x, y: this.y, w, t: this.t });
     this.paint(px, py, w, v, poolF);
+    const m = this.w * 0.8 + 0.004;
+    this.extend(px, py, m); this.extend(this.x, this.y, m);
+  }
+
+  extend(x, y, m) {
+    const d = this.dirty;
+    if (!d) { this.dirty = { x0: x - m, y0: y - m, x1: x + m, y1: y + m }; return; }
+    d.x0 = Math.min(d.x0, x - m); d.y0 = Math.min(d.y0, y - m);
+    d.x1 = Math.max(d.x1, x + m); d.y1 = Math.max(d.y1, y + m);
+  }
+
+  takeDirty() {
+    const d = this.dirty;
+    this.dirty = null;
+    return d;
   }
 
   inkLevel() {

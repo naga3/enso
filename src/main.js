@@ -15,6 +15,8 @@ const layer = () => {
 };
 const paperTex = makePaper();
 const odaiInk = layer(), playerInk = layer(), demoInk = layer();
+// 紙とお題を重ねたもの。お題を変えたときだけ作り直す
+const under = layer(), underDemo = layer();
 const diffLayer = new OffscreenCanvas(GRID, GRID);
 
 let n = Number(location.hash.slice(1)) || Number(localStorage.getItem('enso.n')) || 1;
@@ -22,6 +24,7 @@ let odai, odaiRec;
 let state = 'ready'; // ready | drawing | done | demo
 let brush = null, last = null, attempt = 0;
 let demo = null;
+let full = true; // 次のフレームで紙を丸ごと描き直す
 
 function clearInk(l) {
   l.g.setTransform(1, 0, 0, 1, 0, 0);
@@ -37,6 +40,12 @@ function loadOdai() {
   odai = makeOdai(n);
   clearInk(odaiInk);
   odaiRec = playInto(new Brush(odaiInk.g, n), odai).record;
+  for (const [l, a] of [[under, 0.2], [underDemo, 0.12]]) {
+    l.g.globalCompositeOperation = 'source-over'; l.g.globalAlpha = 1;
+    l.g.drawImage(paperTex, 0, 0);
+    l.g.globalCompositeOperation = 'multiply'; l.g.globalAlpha = a;
+    l.g.drawImage(odaiInk.c, 0, 0);
+  }
   $('odai-name').textContent = `第 ${toKanji(n)} 題`;
   localStorage.setItem('enso.n', n);
   history.replaceState(null, '', `#${n}`);
@@ -46,7 +55,7 @@ function loadOdai() {
 
 function reset() {
   clearInk(playerInk);
-  brush = null; state = 'ready'; demo = null;
+  brush = null; state = 'ready'; demo = null; full = true;
   $('result').hidden = true;
   $('prompt').style.opacity = 1;
 }
@@ -94,6 +103,7 @@ function finish() {
   if (s.total > (Number(localStorage.getItem(key)) || 0)) localStorage.setItem(key, s.total.toFixed(1));
   showBest();
   paintDiff(s.diff);
+  full = true;
   showResult(s);
 }
 
@@ -157,7 +167,7 @@ $('demo').onclick = () => {
   demo = { brush: new Brush(demoInk.g, n), i: 0, t0: performance.now() / 1000, ended: 0 };
   const f = odai.samples[0];
   demo.brush.start(f.x, f.y, f.t);
-  state = 'demo';
+  state = 'demo'; full = true;
   $('result').hidden = true;
   $('prompt').style.opacity = 0;
 };
@@ -176,26 +186,27 @@ function frame() {
     if (!demo.ended && el >= odai.end) { demo.brush.end(odai.end); demo.ended = now; }
     if (demo.ended && now - demo.ended > 1.2) reset();
   }
-  compose();
+  const active = state === 'drawing' ? brush : state === 'demo' ? demo.brush : null;
+  const d = active && active.takeDirty();
+  if (full) { compose(0, 0, S, S); full = false; }
+  else if (d) {
+    const x0 = Math.max(0, Math.floor(d.x0 * S) - 2), y0 = Math.max(0, Math.floor(d.y0 * S) - 2);
+    const x1 = Math.min(S, Math.ceil(d.x1 * S) + 2), y1 = Math.min(S, Math.ceil(d.y1 * S) + 2);
+    if (x1 > x0 && y1 > y0) compose(x0, y0, x1 - x0, y1 - y0);
+  }
   requestAnimationFrame(frame);
 }
 
-function compose() {
+// 紙の (x, y, w, h) の範囲を描き直す（画素）
+function compose(x, y, w, h) {
+  const put = (img, alpha = 1) => { view.globalAlpha = alpha; view.drawImage(img, x, y, w, h, x, y, w, h); };
   view.globalCompositeOperation = 'source-over';
-  view.globalAlpha = 1;
-  view.drawImage(paperTex, 0, 0);
+  put(state === 'demo' ? underDemo.c : under.c);
   view.globalCompositeOperation = 'multiply';
-  if (state === 'demo') {
-    view.globalAlpha = 0.12; view.drawImage(odaiInk.c, 0, 0);
-    view.globalAlpha = 1; view.drawImage(demoInk.c, 0, 0);
-  } else if (state === 'done') {
-    view.globalAlpha = 0.2; view.drawImage(odaiInk.c, 0, 0);
-    view.globalAlpha = 1; view.drawImage(playerInk.c, 0, 0);
+  put(state === 'demo' ? demoInk.c : playerInk.c);
+  if (state === 'done') {
     view.globalCompositeOperation = 'source-over';
     view.globalAlpha = 0.7; view.imageSmoothingEnabled = true; view.drawImage(diffLayer, 0, 0, S, S);
-  } else {
-    view.globalAlpha = 0.2; view.drawImage(odaiInk.c, 0, 0);
-    view.globalAlpha = 1; view.drawImage(playerInk.c, 0, 0);
   }
   view.globalAlpha = 1;
   view.globalCompositeOperation = 'source-over';
@@ -237,4 +248,4 @@ function toKanji(k) {
 
 if (location.hash) $('start').click();
 requestAnimationFrame(frame);
-window.enso = { get odai() { return odai; }, get rec() { return odaiRec; }, score, Brush, playInto };
+window.enso = { get odai() { return odai; }, get rec() { return odaiRec; }, redraw() { compose(0, 0, S, S); }, score, Brush, playInto };
