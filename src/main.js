@@ -1,4 +1,5 @@
-import { Brush, W_MAX, grain, rng } from './brush.js';
+import { Brush, W_MAX } from './brush.js';
+import { makePaper } from './paper.js';
 import { makeOdai, playInto, CW, CCW } from './odai.js';
 import { score, GRID } from './score.js';
 
@@ -7,7 +8,7 @@ const paper = $('paper');
 // 描いている途中の遅れを減らす（desynchronized）
 const view = paper.getContext('2d', { alpha: false, desynchronized: true });
 // 版。push するたびに一つ上げる（スマホに最新が届いたかを画面の下で見る）
-const VERSION = 7;
+const VERSION = 8;
 // 紙の画素数。スマホの高い倍率のままだと重いので、倍率は 2、一辺は 800 までにする
 const S = Math.min(800, Math.round(Math.min(innerWidth, innerHeight * 0.62) * Math.min(2, devicePixelRatio))) || 600;
 paper.width = paper.height = S;
@@ -17,7 +18,7 @@ const layer = () => {
   const g = c.getContext('2d');
   return { c, g };
 };
-const paperTex = makePaper();
+const paperTex = makePaper(S);
 const odaiInk = layer();
 // 紙とお題を重ねたもの。描く前に画面へ写し、筆はその上に直接描く（毎フレームの写し直しはしない）
 const under = layer(), underDemo = layer();
@@ -218,32 +219,6 @@ function frame() {
   requestAnimationFrame(frame);
 }
 
-function makePaper() {
-  const c = new OffscreenCanvas(S, S);
-  const g = c.getContext('2d');
-  const img = g.createImageData(S, S);
-  const d = img.data;
-  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
-    const v = grain[((y >> 1) & 255) * 256 + ((x >> 1) & 255)] - 0.5;
-    const cx = x / S - 0.5, cy = y / S - 0.5;
-    const vig = 1 - (cx * cx + cy * cy) * 0.18;
-    const i = (y * S + x) * 4;
-    d[i] = (240 + v * 7) * vig; d[i + 1] = (233 + v * 7) * vig; d[i + 2] = (218 + v * 8) * vig; d[i + 3] = 255;
-  }
-  g.putImageData(img, 0, 0);
-  // 楮の繊維
-  const r = rng(7);
-  g.lineCap = 'round';
-  for (let k = 0; k < 260; k++) {
-    let x = r() * S, y = r() * S, a = r() * Math.PI * 2;
-    g.strokeStyle = `rgba(${r() < 0.5 ? '255,252,244' : '200,188,165'},${0.25 + r() * 0.3})`;
-    g.lineWidth = (0.4 + r() * 0.8) * S / 800;
-    g.beginPath(); g.moveTo(x, y);
-    for (let s = 0; s < 6; s++) { a += (r() - 0.5) * 0.9; x += Math.cos(a) * S * 0.006; y += Math.sin(a) * S * 0.006; g.lineTo(x, y); }
-    g.stroke();
-  }
-  return c;
-}
 
 requestAnimationFrame(frame);
 window.enso = { get odai() { return odai; }, get rec() { return odaiRec; }, score, Brush, playInto };

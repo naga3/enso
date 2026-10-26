@@ -31,6 +31,14 @@ https://naga3.github.io/enso/ で遊べる（main に push すると GitHub Page
 
 `img/title.jpg`（AI で描いた絵。自由に使える）。無いときは文字の表紙になる。
 
+## 紹介動画
+
+`npm i` のあと `npm run promo` で `promo/out/ichiensoman.mp4`（1080×1920、30fps、25 秒、音つき）を書き出す。`promo/out/` は git に入れない。
+
+- `promo/promo.js` がコマを描く。ゲームと同じ筆・お題・採点を使い、時刻はコマごとに進める
+- `promo/render.mjs` がヘッドレスの Chromium で 1 コマずつ撮って ffmpeg に渡し、音（筆の擦れ・太鼓）を合成して重ねる
+- 流れ: 表紙 → お題をなぞる → ゆっくりは太く・速いと細く・止まると溜まる → 採点（五段 87 点）→ 締め（URL）
+
 ## 版
 
 画面の下に版（`src/main.js` の `VERSION`）と、フレームレート・1 フレームあたりの筆の時間を出す。push するたびに `VERSION` と、index.html の `main.js?v=` を一つ上げる。GitHub Pages は最大 10 分ほど古いファイルを返すので、スマホに最新が届いたかをこれで見る。
