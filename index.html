@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>イチエンソーマン</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main id="app">
+  <section id="title" class="screen">
+    <div class="title-art">
+      <img src="img/title.jpg" alt="イチエンソーマン" onerror="this.parentNode.classList.add('missing')">
+      <h1>イチエンソーマン</h1>
+    </div>
+    <button id="start" class="primary">筆をとる</button>
+  </section>
+
+  <section id="game" class="screen" hidden>
+    <header>
+      <button id="back" class="ghost">‹ 表紙</button>
+      <span id="odai-name"></span>
+      <span id="best"></span>
+    </header>
+    <div class="paper-wrap"><canvas id="paper"></canvas><p id="prompt">お題をなぞる（一筆）</p></div>
+    <div class="controls">
+      <button id="demo">お手本</button>
+      <button id="retry">書き直す</button>
+      <button id="next">次のお題</button>
+    </div>
+    <div id="result" hidden>
+      <div class="rank"><span id="rank"></span><span id="total"></span></div>
+      <dl class="bars">
+        <dt>足りない</dt><dd><i id="bar-miss"></i></dd><span id="miss"></span>
+        <dt>はみ出し</dt><dd><i id="bar-over"></i></dd><span id="over"></span>
+      </dl>
+      <p class="note">紙の上の朱が足りない所、青がはみ出した所。細すぎると足りず、太すぎるとはみ出す。</p>
+      <canvas id="graph"></canvas>
+      <ul id="hints"></ul>
+    </div>
+  </section>
+</main>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
