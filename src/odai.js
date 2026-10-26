@@ -1,43 +1,31 @@
 // お題。架空の手の動き（位置と時刻の列）を作る。
-// 同じ筆に通して描くので、お題の太さはどれも人の手で出せる。
-
-import { rng } from './brush.js';
+// 同じ筆に通して描くので、お題の太さは人の手で出せる。
+// お題は一つだけで、みんなが同じものを描く。向きだけ選べて、逆向きは左右を反転させたもの（形も速さも同じ）。
 
 const HZ = 120;
 
-export function makeOdai(n) {
-  const r = rng(n * 7919 + 17);
-  const between = (a, b) => a + (b - a) * r();
-  const dir = r() < 0.5 ? 1 : -1;
-  const R = between(0.28, 0.33);
-  const cx = 0.5 + between(-0.02, 0.02), cy = 0.5 + between(-0.02, 0.02);
-  const ecc = between(-0.07, 0.07), rot = between(0, Math.PI);
-  const h2 = between(0, 0.03), p2 = between(0, 6.3), h3 = between(0, 0.02), p3 = between(0, 6.3);
-  // 描き始めは左側のどこか（画面は y が下向き）
-  const a0 = between(0.55, 1.45) * Math.PI;
-  const sweep = Math.PI * 2 * between(0.86, 1.06);
-  const dwell = between(0.12, 0.6);
-  const dur = between(0.9, 1.9);
-  const slowAt = between(0.25, 0.7), slowBy = between(0, 0.55);
-  const tome = r() < 0.25; // 終わりを止める
-  const endFast = tome ? 0 : between(0.4, 1.2);
+export const CW = 1;   // 時計回り（左下から描き出す）
+export const CCW = -1; // 反時計回り（右下から描き出す）
 
+const R = 0.3;
+const A0 = 0.72 * Math.PI;         // 描き始め（左下。画面は y が下向き）
+const SWEEP = Math.PI * 2 * 0.96;  // 少しだけ開けて閉じない
+const DWELL = 0.35;                // 入りの溜め
+const DUR = 1.4;                   // 回る時間
+const SLOW_AT = 0.5, SLOW_BY = 0.2; // 途中のゆるみ
+const END_FAST = 0.8;              // 抜けに向けて速く
+
+export function makeOdai(dir = CW) {
   const point = (u) => {
-    const a = a0 + dir * sweep * u;
-    const rr = R * (1 + h2 * Math.sin(2 * a + p2) + h3 * Math.sin(3 * a + p3));
-    const ex = Math.cos(a) * rr * (1 + ecc), ey = Math.sin(a) * rr * (1 - ecc);
-    return {
-      x: cx + ex * Math.cos(rot) - ey * Math.sin(rot),
-      y: cy + ex * Math.sin(rot) + ey * Math.cos(rot),
-    };
+    const a = A0 + SWEEP * u;
+    return { x: 0.5 + dir * Math.cos(a) * R, y: 0.5 + Math.sin(a) * R };
   };
 
-  // 速さの流れ: 出だしはゆっくり、途中で一度ゆるみ、終わりは速く（止めなら遅く）
+  // 速さの流れ: 出だしはゆっくり、途中で一度ゆるみ、終わりは速く
   const speed = (s) => {
     let v = 0.3 + Math.min(1, s / 0.18) * 0.7;
-    v *= 1 - slowBy * Math.exp(-(((s - slowAt) / 0.12) ** 2));
-    v *= tome ? 1 - 0.65 * smoothEnd(s) : 1 + endFast * s * s;
-    return v;
+    v *= 1 - SLOW_BY * Math.exp(-(((s - SLOW_AT) / 0.12) ** 2));
+    return v * (1 + END_FAST * s * s);
   };
   const N = 400;
   const cum = [0];
@@ -46,33 +34,19 @@ export function makeOdai(n) {
 
   const samples = [];
   const p0 = point(0);
-  const t0 = 0;
-  samples.push({ x: p0.x, y: p0.y, t: t0 });
-  for (let t = 1 / HZ; t < dwell; t += 1 / HZ) samples.push({ x: p0.x, y: p0.y, t: t0 + t });
+  for (let t = 0; t < DWELL; t += 1 / HZ) samples.push({ x: p0.x, y: p0.y, t });
   // 時刻 → 進み具合 u
-  for (let i = 1; ; i++) {
-    const tt = i / HZ;
-    if (tt > dur) break;
-    const target = (tt / dur) * total;
+  for (let i = 1; i / HZ <= DUR; i++) {
+    const target = (i / HZ / DUR) * total;
     let k = cum.findIndex((c) => c >= target);
     if (k < 1) k = 1;
     const u = (k - 1 + (target - cum[k - 1]) / (cum[k] - cum[k - 1])) / N;
     const p = point(u);
-    samples.push({ x: p.x, y: p.y, t: dwell + tt });
+    samples.push({ x: p.x, y: p.y, t: DWELL + i / HZ });
   }
   const pe = point(1);
-  samples.push({ x: pe.x, y: pe.y, t: dwell + dur });
-  let end = dwell + dur;
-  if (tome) {
-    for (let t = 1 / HZ; t < 0.12; t += 1 / HZ) samples.push({ x: pe.x, y: pe.y, t: end + t });
-    end += 0.12;
-  }
-  return { n, samples, end, dir, tome };
-}
-
-function smoothEnd(s) {
-  const t = Math.min(1, Math.max(0, (s - 0.75) / 0.25));
-  return t * t * (3 - 2 * t);
+  samples.push({ x: pe.x, y: pe.y, t: DWELL + DUR });
+  return { dir, samples, end: DWELL + DUR };
 }
 
 // 筆に手の動きを流し込む（記録だけ・まとめて描くとき）

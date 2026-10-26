@@ -1,5 +1,5 @@
 import { Brush, W_MAX, grain, rng } from './brush.js';
-import { makeOdai, playInto } from './odai.js';
+import { makeOdai, playInto, CW, CCW } from './odai.js';
 import { score, GRID } from './score.js';
 
 const $ = (id) => document.getElementById(id);
@@ -19,7 +19,8 @@ const odaiInk = layer(), playerInk = layer(), demoInk = layer();
 const under = layer(), underDemo = layer();
 const diffLayer = new OffscreenCanvas(GRID, GRID);
 
-let n = Number(location.hash.slice(1)) || Number(localStorage.getItem('enso.n')) || 1;
+let dir = localStorage.getItem('enso.dir') === 'ccw' ? CCW : CW;
+const dirKey = () => (dir === CW ? 'cw' : 'ccw');
 let odai, odaiRec;
 let state = 'ready'; // ready | drawing | done | demo
 let brush = null, last = null, attempt = 0;
@@ -37,18 +38,17 @@ function clearInk(l) {
 }
 
 function loadOdai() {
-  odai = makeOdai(n);
+  odai = makeOdai(dir);
   clearInk(odaiInk);
-  odaiRec = playInto(new Brush(odaiInk.g, n), odai).record;
+  odaiRec = playInto(new Brush(odaiInk.g, 1), odai).record;
   for (const [l, a] of [[under, 0.2], [underDemo, 0.12]]) {
     l.g.globalCompositeOperation = 'source-over'; l.g.globalAlpha = 1;
     l.g.drawImage(paperTex, 0, 0);
     l.g.globalCompositeOperation = 'multiply'; l.g.globalAlpha = a;
     l.g.drawImage(odaiInk.c, 0, 0);
   }
-  $('odai-name').textContent = `第 ${toKanji(n)} 題`;
-  localStorage.setItem('enso.n', n);
-  history.replaceState(null, '', `#${n}`);
+  $('dir').textContent = dir === CW ? '↻ 時計回り' : '↺ 反時計回り';
+  localStorage.setItem('enso.dir', dirKey());
   showBest();
   reset();
 }
@@ -61,7 +61,7 @@ function reset() {
 }
 
 function showBest() {
-  const b = Number(localStorage.getItem(`enso.best.${n}`));
+  const b = Number(localStorage.getItem(`enso.best.${dirKey()}`));
   $('best').textContent = b ? `最高 ${b.toFixed(0)}` : '';
 }
 
@@ -99,7 +99,7 @@ function finish() {
   const s = score(odaiRec, brush.record);
   state = 'done';
   if (!s) { reset(); return; }
-  const key = `enso.best.${n}`;
+  const key = `enso.best.${dirKey()}`;
   if (s.total > (Number(localStorage.getItem(key)) || 0)) localStorage.setItem(key, s.total.toFixed(1));
   showBest();
   paintDiff(s.diff);
@@ -164,7 +164,7 @@ function drawGraph(s) {
 $('demo').onclick = () => {
   if (state === 'drawing') return;
   clearInk(demoInk);
-  demo = { brush: new Brush(demoInk.g, n), i: 0, t0: performance.now() / 1000, ended: 0 };
+  demo = { brush: new Brush(demoInk.g, 1), i: 0, t0: performance.now() / 1000, ended: 0 };
   const f = odai.samples[0];
   demo.brush.start(f.x, f.y, f.t);
   state = 'demo'; full = true;
@@ -172,7 +172,7 @@ $('demo').onclick = () => {
   $('prompt').style.opacity = 0;
 };
 $('retry').onclick = () => { if (state !== 'drawing') reset(); };
-$('next').onclick = () => { if (state !== 'drawing') { n++; loadOdai(); } };
+$('dir').onclick = () => { if (state !== 'drawing') { dir = -dir; loadOdai(); } };
 $('start').onclick = () => { $('title').hidden = true; $('game').hidden = false; loadOdai(); };
 $('back').onclick = () => { $('game').hidden = true; $('title').hidden = false; };
 
@@ -239,13 +239,5 @@ function makePaper() {
   return c;
 }
 
-function toKanji(k) {
-  const d = '〇一二三四五六七八九';
-  if (k < 10) return d[k];
-  if (k < 100) return `${k >= 20 ? d[Math.floor(k / 10)] : ''}十${k % 10 ? d[k % 10] : ''}`;
-  return String(k);
-}
-
-if (location.hash) $('start').click();
 requestAnimationFrame(frame);
 window.enso = { get odai() { return odai; }, get rec() { return odaiRec; }, redraw() { compose(0, 0, S, S); }, score, Brush, playInto };
